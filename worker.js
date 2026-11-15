@@ -3,9 +3,13 @@ export default {
   async fetch(request, env) {
     const cors = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
     };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: cors });
+    }
 
     const reply = (data, status = 200) =>
       new Response(JSON.stringify(data), {
@@ -15,24 +19,6 @@ export default {
           "Content-Type": "application/json; charset=utf-8"
         }
       });
-
-    // Проверка работы сервера при открытии ссылки
-    if (request.method === "GET") {
-      return new Response(
-        "ПРОРАБЫЧ AI работает. Сервер распознавания готов.",
-        {
-          status: 200,
-          headers: {
-            ...cors,
-            "Content-Type": "text/plain; charset=utf-8"
-          }
-        }
-      );
-    }
-
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: cors });
-    }
 
     if (request.method !== "POST") {
       return reply({ error: "Используйте POST" }, 405);
@@ -51,10 +37,8 @@ export default {
         return reply({ error: "Не получена фотография" }, 400);
       }
 
-      if (image.length > 7_000_000) {
-        return reply({
-          error: "Фото слишком большое. Уменьшите размер."
-        }, 413);
+      if (image.length > 7000000) {
+        return reply({ error: "Фото слишком большое. Уменьшите размер." }, 413);
       }
 
       if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
@@ -68,35 +52,33 @@ export default {
       const prompt = `
 Ты помощник магазина ПРОРАБЫЧ (сантехника и электрика).
 
-Изучи фотографию товара.
-Определи, что это за изделие, его назначение,
-видимые размеры, маркировку, материал и тип соединения,
-если это можно достоверно определить.
+Изучи фотографию товара. Определи изделие,
+назначение, видимые размеры, маркировку,
+материал и тип соединения, если это достоверно видно.
 
 ${catalog.length ? `
-Вот товары из каталога магазина:
+Каталог магазина:
 ${JSON.stringify(catalog)}
 
 Выбирай совпадения ТОЛЬКО из этого списка.
-Не придумывай товары, названия и артикулы.
-Если точного совпадения нет, так и укажи.
-` : "Пока каталог не передан. Не придумывай артикулы и цены."}
+Не придумывай товары и артикулы.
+` : "Каталог не передан. Не придумывай артикулы и цены."}
 
-Верни ответ на русском языке в формате JSON:
+Верни JSON на русском языке:
 {
   "name": "название или описание товара",
   "category": "категория",
-  "details": ["видимая характеристика"],
+  "details": ["характеристика"],
   "matches": [],
   "question": "уточняющий вопрос или пустая строка",
   "confidence": "высокая, средняя или низкая"
 }
 
-Не угадывай резьбу, диаметр и размеры, если их не видно.
+Не угадывай резьбу, диаметр и размеры.
 `;
 
       const response = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
         {
           method: "POST",
           headers: {
@@ -132,17 +114,17 @@ ${JSON.stringify(catalog)}
         }, 502);
       }
 
-      const text = result.candidates?.[0]?.content?.parts
+      const resultText = result.candidates?.[0]?.content?.parts
         ?.map(part => part.text || "")
         .join("");
 
-      if (!text) {
+      if (!resultText) {
         return reply({ error: "ИИ не вернул результат" }, 502);
       }
 
       return reply({
         success: true,
-        result: JSON.parse(text)
+        result: JSON.parse(resultText)
       });
 
     } catch (error) {
